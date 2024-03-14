@@ -1,0 +1,88 @@
+
+import requests
+import time
+import pandas as pd
+import pyttsx3  # Import the text-to-speech library
+import winsound
+
+def query_pools_for_token(token_name, check_interval=5, update_interval=60):
+    engine = pyttsx3.init()  # Initialize the text-to-speech engine
+    previous_pool_count = 0  # Initialize previous pool count to zero for the first run
+    last_update_time = time.time()  # Track the last update time
+    first_run = True  # Add a flag for the first run
+
+    while True:
+        try:
+            response = requests.get('https://analytics-balanced.spectrum.fi/cardano/front/pools?after=0')
+            if response.status_code == 200:
+                data = response.json()
+                pool_data_list = []
+
+                for pool in data:
+                    pool_fee_num = pool.get("poolFeeNum", 0)
+                    pool_fee_denum = pool.get("poolFeeDenum", 1)  # Prevent division by zero
+                    fee_percentage = (1-(pool_fee_num / pool_fee_denum)) * 100
+
+                    pool_details = {
+                        "poolId": pool.get("id", ""),
+                        "tokenName": pool['lockedY']['asset']['tokenName'],
+                        "amount": pool['lockedY']['amount'],
+                        "feePercentage": f"{fee_percentage:.0f}%",
+                    }
+                    pool_data_list.append(pool_details)
+
+                df_pools = pd.DataFrame(pool_data_list)
+                df_filtered = df_pools[df_pools['tokenName'].str.contains(token_name, case=False)]
+                current_pool_count = len(df_filtered)
+                current_time = time.time()
+
+                if current_pool_count > previous_pool_count:
+                    new_pools = df_filtered.tail(current_pool_count - previous_pool_count)
+                    if first_run:  # On the first run, just print the pools and give a summary
+                        print(df_filtered)
+                        announcement = f"Initial pool count is {current_pool_count}."
+                        print(announcement)
+                        engine.say(announcement)
+                        engine.runAndWait()
+                        first_run = False  # Update the flag after the first run
+                    else:
+                        for _, new_pool in new_pools.iterrows():
+                            amount_in_billion = float(new_pool['amount']) / 1e9
+                            winsound.Beep(1000, 1000) #winsound.Beep(sound_frequency, sound_duration) 
+                            announcement = f"New {amount_in_billion:.2f} billion pool with {new_pool['feePercentage']} fees added. Previous pools: {previous_pool_count}, current pools: {current_pool_count}."
+                            print(announcement)
+                            engine.say(announcement)
+                            engine.runAndWait()
+
+                    previous_pool_count = current_pool_count
+                    last_update_time = current_time  # Update the last update time after announcing
+
+                # Provide an update every update_interval seconds
+                if current_time - last_update_time >= update_interval:
+                    if df_filtered.empty:
+                        announcement = f"No {token_name} pools found."
+                    else:
+                        biggest_pool = df_filtered['amount'].astype(float).idxmax()
+                        biggest_pool_amount = float(df_filtered.loc[biggest_pool, 'amount']) / 1e9
+                        announcement = f"No new pools, again {current_pool_count}. Largest pool: {biggest_pool_amount:.2f} billion."
+                    print(announcement)
+                    engine.say(announcement)
+                    engine.runAndWait()
+                    last_update_time = current_time  # Reset the last update time
+
+                else:
+                    if not first_run:  # Only print this if it's not the first run
+                        print(f"No new {token_name} pools detected, again {current_pool_count}.")
+
+            else:
+                print(f"Failed to retrieve data, status code: {response.status_code}")
+            
+        except requests.exceptions.RequestException as e:
+            print(f"An error occurred: {e}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
+        time.sleep(check_interval)  # Wait for the specified interval before the next check
+winsound.Beep(1000, 1000) 
+# Replace 'BTN' with any token name you want to monitor
+query_pools_for_token('BTN', check_interval=5, update_interval=60)
