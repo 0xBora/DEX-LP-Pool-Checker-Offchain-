@@ -1,0 +1,41 @@
+
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+import time
+import winsound  # Only works on Windows
+
+def check_pool_availability(url, check_interval, sound_frequency=2500, sound_duration=1000):
+    service = Service('C:/chromedriver.exe')
+    options = webdriver.ChromeOptions()
+    # options.add_argument('--headless')  # Uncomment to hide the browser window
+
+    browser = webdriver.Chrome(service=service, options=options)
+
+    try:
+        while True:
+            browser.get(url)
+            browser.implicitly_wait(10)
+            final_url = browser.current_url
+            title = browser.title
+
+            print(f"Checked at {time.ctime()} - URL: {final_url} - Title: {title}")
+
+            # Check if the title indicates the pool is available
+            if not title.startswith("No Pool"):
+                print(f"Pool is available for {url}! Playing sound...")
+                winsound.Beep(sound_frequency, sound_duration)  # Play a sound
+                break  # Stop checking after finding the pool
+
+            print(f"Waiting for {check_interval} seconds before the next check...")
+            time.sleep(check_interval)  # Wait for the specified interval before checking again
+
+    except KeyboardInterrupt:
+        print("Stopped by the user")
+
+    finally:
+        browser.quit()
+
+# URL to check
+url = "https://app.dexhunter.io/AGIX"
+check_interval = 5  # Check every 5 seconds
+check_pool_availability(url, check_interval)
